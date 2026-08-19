@@ -52,24 +52,19 @@ body {
 
 .title {
     margin: 0;
-
     font-size: 30px;
     font-weight: 800;
 }
 
 .subtitle {
     margin-top: 5px;
-
     font-size: 13px;
-
     color: #adb6cc;
 }
 
 .live {
     display: inline-block;
-
     margin-top: 12px;
-
     padding: 7px 11px;
 
     border: 1px solid #2b66ff;
@@ -83,7 +78,6 @@ body {
 
 .section-title {
     margin: 22px 0 10px;
-
     font-size: 20px;
     font-weight: 800;
 }
@@ -102,7 +96,6 @@ body {
     );
 
     border: 1px solid #294c9a;
-
     border-radius: 16px;
 
     color: white;
@@ -119,12 +112,24 @@ body {
     line-height: 1.3;
 }
 
-.arrow {
+.event-date {
     margin-top: 8px;
+    font-size: 14px;
+    color: #d7dded;
+}
 
+.event-time {
+    margin-top: 4px;
+    font-size: 14px;
+    color: #7da4ff;
+    font-weight: 700;
+}
+
+.arrow {
+    margin-top: 10px;
     color: #5d8fff;
-
     font-size: 12px;
+    font-weight: 700;
 }
 
 .empty {
@@ -136,12 +141,14 @@ body {
     border-radius: 16px;
 
     font-size: 15px;
+    line-height: 1.5;
 
     color: #c0c7d6;
 }
 
 .footer {
     margin-top: 24px;
+    padding-bottom: 20px;
 
     font-size: 10px;
 
@@ -193,20 +200,32 @@ body {
                     {{ event.title }}
                 </div>
 
+                <div class="event-date">
+                    {{ event.date }}
+                </div>
+
+                <div class="event-time">
+                    {{ event.start_time }}
+                    –
+                    {{ event.end_time }}
+                    SLT
+                </div>
+
                 <div class="arrow">
-                    Tap to view event →
+                    View Event →
                 </div>
 
             </a>
 
         {% endfor %}
 
+
     {% else %}
 
         <div class="empty">
 
-            Calendar is connected, but no events
-            could be loaded right now.
+            Calendar is connected, but no upcoming
+            events could be loaded right now.
 
         </div>
 
