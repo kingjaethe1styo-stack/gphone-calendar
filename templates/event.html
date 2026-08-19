@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
+>
+
+<title>{{ event.title }} - GPhone</title>
+
+<style>
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    min-height: 100%;
+}
+
+body {
+    background: #03050a;
+    color: white;
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+.phone {
+
+    width: 100%;
+    min-height: 100vh;
+
+    padding:
+        16px
+        14px
+        40px;
+
+    background:
+        radial-gradient(
+            circle at top right,
+            #173172 0%,
+            #080d1b 32%,
+            #03050a 72%
+        );
+}
+
+.back {
+
+    display: inline-block;
+
+    margin-bottom: 15px;
+
+    padding:
+        8px
+        12px;
+
+    border:
+        1px solid #315cff;
+
+    border-radius:
+        20px;
+
+    color:
+        #86a7ff;
+
+    font-size:
+        13px;
+
+    font-weight:
+        700;
+
+    text-decoration:
+        none;
+}
+
+.flyer {
+
+    width: 100%;
+
+    max-height: 390px;
+
+    object-fit: contain;
+
+    border-radius: 16px;
+
+    background: #080d18;
+
+    margin-bottom: 16px;
+}
+
+.card {
+
+    background:
+        rgba(
+            14,
+            22,
+            42,
+            0.96
+        );
+
+    border:
+        1px solid #294c9a;
+
+    border-radius:
+        18px;
+
+    padding:
+        16px;
+
+    margin-bottom:
+        14px;
+}
+
+.title {
+
+    margin: 0;
+
+    font-size: 24px;
+
+    font-weight: 800;
+
+    line-height: 1.25;
+}
+
+.date {
+
+    margin-top: 14px;
+
+    color: #d7dded;
+
+    font-size: 14px;
+}
+
+.time {
+
+    margin-top: 5px;
+
+    color: #7da4ff;
+
+    font-size: 15px;
+
+    font-weight: 700;
+}
+
+.section {
+
+    margin-top: 18px;
+
+    color: #8cabff;
+
+    font-size: 12px;
+
+    font-weight: 800;
+
+    text-transform: uppercase;
+}
+
+.description {
+
+    margin-top: 9px;
+
+    font-size: 14px;
+
+    line-height: 1.55;
+
+    white-space: pre-line;
+
+    color: #e1e6f3;
+}
+
+.button {
+
+    display: block;
+
+    width: 100%;
+
+    padding: 13px;
+
+    margin-top: 12px;
+
+    background:
+        #173571;
+
+    border:
+        1px solid #315cff;
+
+    border-radius:
+        14px;
+
+    color: white;
+
+    text-align: center;
+
+    font-size: 14px;
+
+    font-weight: 700;
+
+    text-decoration: none;
+}
+
+.footer {
+
+    text-align: center;
+
+    margin-top: 20px;
+
+    color: #68748d;
+
+    font-size: 10px;
+}
+
+</style>
+
+</head>
+
+
+<body>
+
+<div class="phone">
+
+
+    <a
+        class="back"
+        href="/"
+    >
+        ← Back to Events
+    </a>
+
+
+    {% if event.image %}
+
+        <img
+            class="flyer"
+            src="{{ event.image }}"
+            alt="Event Flyer"
+        >
+
+    {% endif %}
+
+
+    <div class="card">
+
+
+        <h1 class="title">
+            {{ event.title }}
+        </h1>
+
+
+        {% if event.date %}
+
+            <div class="date">
+                {{ event.date }}
+            </div>
+
+        {% endif %}
+
+
+        {% if event.start_time %}
+
+            <div class="time">
+
+                {{ event.start_time }}
+
+                {% if event.end_time %}
+
+                    –
+                    {{ event.end_time }}
+
+                {% endif %}
+
+                SLT
+
+            </div>
+
+        {% endif %}
+
+
+        {% if event.description %}
+
+            <div class="section">
+                About This Event
+            </div>
+
+            <div class="description">
+                {{ event.description }}
+            </div>
+
+        {% endif %}
+
+
+        <a
+            class="button"
+            href="{{ event.original_url }}"
+        >
+            Open Original TimeTree Event
+        </a>
+
+
+    </div>
+
+
+    <div class="footer">
+        Greek Matrix Central • GPhone
+    </div>
+
+
+</div>
+
+</body>
+
+</html>
