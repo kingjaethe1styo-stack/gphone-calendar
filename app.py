@@ -238,7 +238,19 @@ def refresh_cache():
                     )
                 )
 
+            print(
+                "Calendar cache updated:",
+                len(new_events),
+                "events"
+            )
+
             return True
+
+
+        print(
+            "Calendar scrape returned no events. "
+            "Keeping old cache."
+        )
 
         return False
 
@@ -332,134 +344,375 @@ def scrape_event_details(event_url):
                 timeout=60000
             )
 
-            page.wait_for_timeout(3500)
+            page.wait_for_timeout(4000)
 
-            body_text = page.locator("body").inner_text()
+
+            # =================================================
+            # GET ALL VISIBLE TEXT
+            # =================================================
+
+            body_text = page.locator(
+                "body"
+            ).inner_text()
 
             lines = [
-                line.strip()
+                " ".join(line.split()).strip()
                 for line in body_text.splitlines()
                 if line.strip()
             ]
 
-            # -----------------------------------------
-            # TITLE
-            # -----------------------------------------
 
-            if lines:
-                details["title"] = lines[0]
+            # =================================================
+            # REMOVE TIMETREE / PRIVACY JUNK
+            # =================================================
 
-
-            # -----------------------------------------
-            # DATE / TIMES
-            # -----------------------------------------
-
-            date_pattern = re.compile(
-                r"(Sun|Mon|Tue|Wed|Thu|Fri|Sat),\s+"
-                r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+"
-                r"\d{1,2}\s+\d{4}"
-            )
-
-            time_pattern = re.compile(
-                r"\d{1,2}:\d{2}\s*[AP]M",
-                re.IGNORECASE
-            )
-
-            found_dates = []
-            found_times = []
-
-            for line in lines:
-
-                if date_pattern.search(line):
-                    found_dates.append(line)
-
-                matches = time_pattern.findall(line)
-
-                for match in matches:
-                    found_times.append(match)
-
-
-            if found_dates:
-                details["date"] = found_dates[0]
-
-            if len(found_times) >= 1:
-                details["start_time"] = found_times[0]
-
-            if len(found_times) >= 2:
-                details["end_time"] = found_times[1]
-
-
-            # -----------------------------------------
-            # DESCRIPTION
-            # -----------------------------------------
-
-            skip_words = [
+            junk_exact = {
+                "We value your privacy",
+                "Do Not Sell or Share My Personal Information",
                 "Like",
                 "Copy URL",
                 "Contact us",
+                "Check other events",
+                "Acceptable Use Policy",
+                "Public Calendar Acceptable Use Policy",
+                "Privacy Policy",
+                "Cookie Settings",
                 "Greek Matrix Central Event Calendar"
-            ]
+            }
 
-            description_lines = []
+            clean_lines = []
 
             for line in lines:
 
-                if line == details["title"]:
+                if line in junk_exact:
                     continue
 
-                if line in found_dates:
-                    continue
+                lower = line.lower()
 
-                if any(
-                    word.lower() == line.lower()
-                    for word in skip_words
+                if (
+                    "this website or its third-party tools "
+                    "process personal data"
+                    in lower
                 ):
                     continue
 
-                if time_pattern.fullmatch(line):
+                if (
+                    "you can opt out of the sale of your "
+                    "personal information"
+                    in lower
+                ):
                     continue
+
+                clean_lines.append(
+                    line
+                )
+
+
+            # =================================================
+            # DATE / TIME PATTERNS
+            # =================================================
+
+            date_regex = re.compile(
+                r"(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat),\s+"
+                r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+"
+                r"\d{1,2},?\s+\d{4}",
+                re.IGNORECASE
+            )
+
+            time_range_regex = re.compile(
+                r"(\d{1,2}:\d{2}\s*[AP]M)\s*[-–]\s*"
+                r"(\d{1,2}:\d{2}\s*[AP]M)",
+                re.IGNORECASE
+            )
+
+
+            # =================================================
+            # TITLE / DATE / TIME
+            #
+            # Pull these from the already-clean calendar cache.
+            # =================================================
+
+            with cache_lock:
+
+                for cached in cached_events:
+
+                    if cached["url"] == event_url:
+
+                        details["title"] = (
+                            cached["title"]
+                        )
+
+                        details["date"] = (
+                            cached["date"]
+                        )
+
+                        details["start_time"] = (
+                            cached["start_time"]
+                        )
+
+                        details["end_time"] = (
+                            cached["end_time"]
+                        )
+
+                        break
+
+
+            # =================================================
+            # FALLBACK TITLE
+            # =================================================
+
+            if not details["title"]:
+
+                for line in clean_lines:
+
+                    if date_regex.search(line):
+                        continue
+
+                    if time_range_regex.search(line):
+                        continue
+
+                    if len(line) < 4:
+                        continue
+
+                    details["title"] = line
+
+                    break
+
+
+            # =================================================
+            # FALLBACK DATE
+            # =================================================
+
+            if not details["date"]:
+
+                for line in clean_lines:
+
+                    match = date_regex.search(
+                        line
+                    )
+
+                    if match:
+
+                        details["date"] = (
+                            match.group(0)
+                        )
+
+                        break
+
+
+            # =================================================
+            # FALLBACK TIMES
+            # =================================================
+
+            if (
+                not details["start_time"]
+                or
+                not details["end_time"]
+            ):
+
+                for line in clean_lines:
+
+                    match = (
+                        time_range_regex.search(
+                            line
+                        )
+                    )
+
+                    if match:
+
+                        details["start_time"] = (
+                            match.group(1)
+                        )
+
+                        details["end_time"] = (
+                            match.group(2)
+                        )
+
+                        break
+
+
+            # =================================================
+            # DESCRIPTION
+            # =================================================
+
+            description_lines = []
+
+            for line in clean_lines:
+
+                # Skip event title
+                if line == details["title"]:
+                    continue
+
+
+                # Skip exact cached date
+                if (
+                    details["date"]
+                    and
+                    details["date"].lower()
+                    in line.lower()
+                ):
+                    continue
+
+
+                # Skip date/time-only lines
+                if date_regex.fullmatch(line):
+                    continue
+
+                if time_range_regex.fullmatch(line):
+                    continue
+
+
+                lower = line.lower()
+
+
+                # Skip navigation / legal junk
+                if lower in {
+                    "share",
+                    "calendar",
+                    "public calendar",
+                    "open in timetree"
+                }:
+                    continue
+
+
+                if "cookie" in lower:
+                    continue
+
+                if "privacy policy" in lower:
+                    continue
+
+                if "acceptable use policy" in lower:
+                    continue
+
+                if "check other events" in lower:
+                    continue
+
+                if "do not sell" in lower:
+                    continue
+
 
                 if len(line) < 3:
                     continue
 
-                description_lines.append(line)
+
+                description_lines.append(
+                    line
+                )
+
+
+            # Remove duplicate consecutive lines
+            deduped = []
+
+            for line in description_lines:
+
+                if (
+                    not deduped
+                    or
+                    deduped[-1] != line
+                ):
+                    deduped.append(
+                        line
+                    )
 
 
             details["description"] = "\n".join(
-                description_lines[:15]
+                deduped[:18]
             )
 
 
-            # -----------------------------------------
-            # EVENT IMAGE
-            # -----------------------------------------
+            # =================================================
+            # EVENT FLYER
+            #
+            # Prefer OpenGraph image.
+            # =================================================
 
-            images = page.locator("img").all()
+            og_image = page.locator(
+                'meta[property="og:image"]'
+            )
 
-            for image in images:
+            if og_image.count() > 0:
 
-                try:
+                src = (
+                    og_image
+                    .first
+                    .get_attribute(
+                        "content"
+                    )
+                )
 
-                    src = image.get_attribute("src")
+                if src:
+
+                    details["image"] = (
+                        urljoin(
+                            "https://timetreeapp.com",
+                            src
+                        )
+                    )
+
+
+            # =================================================
+            # FALLBACK IMAGE SEARCH
+            # =================================================
+
+            if not details["image"]:
+
+                images = page.locator(
+                    "img"
+                )
+
+                image_count = (
+                    images.count()
+                )
+
+                for i in range(
+                    image_count
+                ):
+
+                    image = images.nth(
+                        i
+                    )
+
+                    src = (
+                        image.get_attribute(
+                            "src"
+                        )
+                    )
 
                     if not src:
                         continue
 
-                    if src.startswith("data:"):
+
+                    src_lower = (
+                        src.lower()
+                    )
+
+
+                    if src.startswith(
+                        "data:"
+                    ):
                         continue
 
-                    if "logo" in src.lower():
+                    if "logo" in src_lower:
                         continue
 
-                    details["image"] = urljoin(
-                        "https://timetreeapp.com",
-                        src
+                    if "icon" in src_lower:
+                        continue
+
+                    if "avatar" in src_lower:
+                        continue
+
+                    if "cookie" in src_lower:
+                        continue
+
+
+                    details["image"] = (
+                        urljoin(
+                            "https://timetreeapp.com",
+                            src
+                        )
                     )
 
                     break
-
-                except Exception:
-                    continue
 
 
             context.close()
@@ -486,16 +739,24 @@ def home():
 
     with cache_lock:
 
-        events = list(cached_events)
+        events = list(
+            cached_events
+        )
 
         last_refresh = (
             last_successful_refresh
         )
 
 
+    # Serve cached events immediately and refresh
+    # stale data in the background.
+
     if cache_is_stale():
         start_background_refresh()
 
+
+    # If service just started and cache is empty,
+    # do one initial scrape.
 
     if not events:
 
@@ -531,17 +792,25 @@ def event_detail():
         ""
     )
 
+
     if not event_url:
 
-        return "Missing event URL", 400
+        return (
+            "Missing event URL",
+            400
+        )
 
 
-    # Only allow TimeTree public calendar URLs
+    # Security: only permit TimeTree URLs.
+
     if not event_url.startswith(
         "https://timetreeapp.com/"
     ):
 
-        return "Invalid event URL", 400
+        return (
+            "Invalid event URL",
+            400
+        )
 
 
     details = scrape_event_details(
@@ -556,13 +825,14 @@ def event_detail():
 
 
 # =========================================================
-# REFRESH
+# MANUAL REFRESH
 # =========================================================
 
 @app.route("/refresh")
 def refresh():
 
     success = refresh_cache()
+
 
     with cache_lock:
 
@@ -611,6 +881,7 @@ def debug():
 
 
     safe_events = []
+
 
     for event in events:
 
