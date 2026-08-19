@@ -192,9 +192,9 @@ body {
         {% for event in events %}
 
             <a
-                class="event"
-                href="{{ event.url }}"
-            >
+    class="event"
+    href="/event?url={{ event.url | urlencode }}"
+>
 
                 <div class="event-title">
                     {{ event.title }}
