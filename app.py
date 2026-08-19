@@ -1,9 +1,10 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, jsonify
 from playwright.sync_api import sync_playwright
 from urllib.parse import urljoin
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import re
+import threading
 
 app = Flask(__name__)
 
@@ -14,30 +15,27 @@ TIMETREE_URL = (
 
 SL_TIMEZONE = ZoneInfo("America/Los_Angeles")
 
+# =========================================================
+# CACHE SETTINGS
+# =========================================================
+
+CACHE_MINUTES = 15
+
+cached_events = []
+last_successful_refresh = None
+refresh_in_progress = False
+
+cache_lock = threading.Lock()
+
 
 # =========================================================
-# CLEAN / PARSE EVENT TEXT
+# PARSE TIMETREE EVENT TEXT
 # =========================================================
 
 def parse_event_text(raw_text):
-    """
-    Example raw TimeTree text:
-
-    Rep Your Block Tue, Aug 18, 2026 5:00 PM - 7:00 PM Like
-
-    Returns:
-    {
-        "title": "Rep Your Block",
-        "date": "Tue, Aug 18, 2026",
-        "start_time": "5:00 PM",
-        "end_time": "7:00 PM",
-        "start_datetime": datetime(...)
-    }
-    """
-
     text = " ".join(raw_text.split()).strip()
 
-    # Remove trailing Like
+    # Remove trailing "Like"
     text = re.sub(
         r"\s+Like\s*$",
         "",
@@ -87,11 +85,13 @@ def parse_event_text(raw_text):
 
 
 # =========================================================
-# GET LIVE TIMETREE EVENTS
+# SCRAPE TIMETREE
 # =========================================================
 
-def get_events():
+def scrape_timetree():
     events = []
+
+    print("Starting TimeTree scrape...")
 
     try:
         with sync_playwright() as p:
@@ -100,11 +100,11 @@ def get_events():
                 headless=True,
                 args=[
                     "--no-sandbox",
-                    "--disable-dev-shm-usage"
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu"
                 ]
             )
 
-            # Explicitly use SL / Pacific timezone.
             context = browser.new_context(
                 viewport={
                     "width": 390,
@@ -122,7 +122,7 @@ def get_events():
                 timeout=60000
             )
 
-            # Give TimeTree JavaScript time to populate events.
+            # Wait for TimeTree JS
             page.wait_for_timeout(5000)
 
             seen = set()
@@ -153,7 +153,9 @@ def get_events():
                     if not raw_text:
                         continue
 
-                    parsed = parse_event_text(raw_text)
+                    parsed = parse_event_text(
+                        raw_text
+                    )
 
                     if not parsed:
                         continue
@@ -178,69 +180,201 @@ def get_events():
     except Exception as error:
 
         print(
-            "PLAYWRIGHT / TIMETREE ERROR:",
+            "TIMETREE SCRAPE ERROR:",
             repr(error)
         )
 
         return []
 
 
-    # -----------------------------------------------------
-    # REMOVE EVENTS FROM BEFORE TODAY
-    #
-    # Keep all events dated today or later.
-    # -----------------------------------------------------
-
-    now_slt = datetime.now(SL_TIMEZONE)
-
-    today_slt = now_slt.date()
+    # Remove dates before today
+    today_slt = datetime.now(
+        SL_TIMEZONE
+    ).date()
 
     events = [
         event
         for event in events
-        if event["start_datetime"].date() >= today_slt
+        if event["start_datetime"].date()
+        >= today_slt
     ]
 
 
-    # -----------------------------------------------------
-    # SORT BY DATE/TIME
-    # -----------------------------------------------------
-
+    # Sort chronologically
     events.sort(
-        key=lambda event: event["start_datetime"]
+        key=lambda event:
+        event["start_datetime"]
     )
 
 
-    return events[:30]
+    print(
+        "TimeTree scrape complete:",
+        len(events),
+        "events"
+    )
+
+    return events[:40]
 
 
 # =========================================================
-# MAIN PAGE
+# UPDATE CACHE
+# =========================================================
+
+def refresh_cache():
+    global cached_events
+    global last_successful_refresh
+    global refresh_in_progress
+
+    with cache_lock:
+
+        if refresh_in_progress:
+            return False
+
+        refresh_in_progress = True
+
+
+    try:
+        new_events = scrape_timetree()
+
+        if new_events:
+
+            with cache_lock:
+
+                cached_events = new_events
+
+                last_successful_refresh = (
+                    datetime.now(
+                        SL_TIMEZONE
+                    )
+                )
+
+            print(
+                "Calendar cache updated successfully."
+            )
+
+            return True
+
+
+        print(
+            "Scrape returned no events. "
+            "Keeping previous cache."
+        )
+
+        return False
+
+
+    finally:
+
+        with cache_lock:
+            refresh_in_progress = False
+
+
+# =========================================================
+# CHECK IF CACHE NEEDS REFRESH
+# =========================================================
+
+def cache_is_stale():
+
+    with cache_lock:
+
+        if last_successful_refresh is None:
+            return True
+
+        age = (
+            datetime.now(SL_TIMEZONE)
+            -
+            last_successful_refresh
+        )
+
+    return age > timedelta(
+        minutes=CACHE_MINUTES
+    )
+
+
+# =========================================================
+# BACKGROUND REFRESH
+# =========================================================
+
+def start_background_refresh():
+
+    if not cache_is_stale():
+        return
+
+    with cache_lock:
+
+        if refresh_in_progress:
+            return
+
+    thread = threading.Thread(
+        target=refresh_cache
+    )
+
+    thread.daemon = True
+
+    thread.start()
+
+
+# =========================================================
+# HOME PAGE
 # =========================================================
 
 @app.route("/")
 def home():
 
-    events = get_events()
+    # If we already have cached events,
+    # show them immediately.
+
+    with cache_lock:
+        events = list(cached_events)
+        last_refresh = last_successful_refresh
+
+
+    # Refresh stale cache in background
+    if cache_is_stale():
+        start_background_refresh()
+
+
+    # If cache is totally empty, first visit
+    # needs an initial scrape.
+
+    if not events:
+
+        refresh_cache()
+
+        with cache_lock:
+            events = list(cached_events)
+            last_refresh = last_successful_refresh
+
 
     return render_template(
         "index.html",
         events=events,
-        updated=datetime.now(SL_TIMEZONE)
+        updated=last_refresh
     )
 
 
 # =========================================================
-# HEALTH CHECK
+# MANUAL REFRESH
 # =========================================================
 
-@app.route("/health")
-def health():
+@app.route("/refresh")
+def refresh():
 
-    return {
-        "status": "GPhone Calendar Online",
-        "source": "Greek Matrix Central Event Calendar"
-    }
+    success = refresh_cache()
+
+    with cache_lock:
+        count = len(cached_events)
+        last_refresh = last_successful_refresh
+
+    return jsonify({
+        "success": success,
+        "count": count,
+        "last_refresh": (
+            last_refresh.isoformat()
+            if last_refresh
+            else None
+        )
+    })
 
 
 # =========================================================
@@ -250,11 +384,14 @@ def health():
 @app.route("/debug")
 def debug():
 
-    events = get_events()
+    with cache_lock:
+        events = list(cached_events)
+        last_refresh = last_successful_refresh
 
     safe_events = []
 
     for event in events:
+
         safe_events.append({
             "title": event["title"],
             "date": event["date"],
@@ -263,14 +400,37 @@ def debug():
             "url": event["url"]
         })
 
-    return {
+    return jsonify({
         "count": len(safe_events),
-        "timezone": "America/Los_Angeles",
+        "cache_minutes": CACHE_MINUTES,
+        "refresh_in_progress": refresh_in_progress,
+        "last_refresh": (
+            last_refresh.isoformat()
+            if last_refresh
+            else None
+        ),
         "events": safe_events
-    }
+    })
 
+
+# =========================================================
+# HEALTH
+# =========================================================
+
+@app.route("/health")
+def health():
+
+    return jsonify({
+        "status": "GPhone Calendar Online"
+    })
+
+
+# =========================================================
+# RUN
+# =========================================================
 
 if __name__ == "__main__":
+
     app.run(
         host="0.0.0.0",
         port=10000
