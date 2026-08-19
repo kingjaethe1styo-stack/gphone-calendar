@@ -16,16 +16,13 @@ TIMETREE_URL = (
 
 SL_TIMEZONE = ZoneInfo("America/Los_Angeles")
 
-
 # =========================================================
 # CACHE SETTINGS
 # =========================================================
 
 CALENDAR_CACHE_MINUTES = 15
 DETAIL_CACHE_MINUTES = 60
-
-# How many upcoming events we preload
-PRECACHE_EVENT_COUNT = 8
+PRECACHE_EVENT_COUNT = 4
 
 cached_events = []
 last_successful_refresh = None
@@ -35,7 +32,6 @@ detail_cache = {}
 
 cache_lock = threading.Lock()
 
-# Prevent multiple precache threads
 precache_in_progress = False
 
 
@@ -44,6 +40,7 @@ precache_in_progress = False
 # =========================================================
 
 def parse_event_text(raw_text):
+
     text = " ".join(
         raw_text.split()
     ).strip()
@@ -112,9 +109,11 @@ def parse_event_text(raw_text):
 # =========================================================
 
 def scrape_timetree():
+
     events = []
 
     try:
+
         with sync_playwright() as p:
 
             browser = p.chromium.launch(
@@ -156,6 +155,7 @@ def scrape_timetree():
             for link in links:
 
                 try:
+
                     href = (
                         link.get_attribute(
                             "href"
@@ -290,7 +290,6 @@ def refresh_cache():
                 "events"
             )
 
-            # Start preloading event details
             start_detail_precache()
 
             return True
@@ -344,7 +343,6 @@ def start_background_refresh():
     )
 
     thread.daemon = True
-
     thread.start()
 
 
@@ -422,10 +420,11 @@ def save_detail_cache(
 
 
 # =========================================================
-# SCRAPE ONE EVENT DETAIL PAGE
+# CLEAN EVENT DETAIL TEXT
 # =========================================================
 
-def scrape_event_details(
+def build_event_details_from_page(
+    page,
     event_url
 ):
 
@@ -438,6 +437,378 @@ def scrape_event_details(
         "image": "",
         "original_url": event_url
     }
+
+    body_text = page.locator(
+        "body"
+    ).inner_text()
+
+    lines = [
+        " ".join(
+            line.split()
+        ).strip()
+        for line in body_text.splitlines()
+        if line.strip()
+    ]
+
+    junk_exact = {
+        "We value your privacy",
+        "Do Not Sell or Share My Personal Information",
+        "Like",
+        "Copy URL",
+        "Contact us",
+        "Check other events",
+        "Acceptable Use Policy",
+        "Public Calendar Acceptable Use Policy",
+        "Privacy Policy",
+        "Cookie Settings",
+        "Greek Matrix Central Event Calendar",
+        "About TimeTree",
+        "Copyright © TimeTree Inc. All rights reserved"
+    }
+
+    clean_lines = []
+
+    for line in lines:
+
+        if line in junk_exact:
+            continue
+
+        lower = (
+            line.lower()
+        )
+
+        if (
+            "this website or its third-party tools "
+            "process personal data"
+            in lower
+        ):
+            continue
+
+        if (
+            "you can opt out of the sale of your "
+            "personal information"
+            in lower
+        ):
+            continue
+
+        if lower.startswith(
+            "copyright © timetree"
+        ):
+            continue
+
+        if lower == "about timetree":
+            continue
+
+        clean_lines.append(
+            line
+        )
+
+
+    date_regex = re.compile(
+        r"(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat),\s+"
+        r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+"
+        r"\d{1,2},?\s+\d{4}",
+        re.IGNORECASE
+    )
+
+
+    time_range_regex = re.compile(
+        r"(\d{1,2}:\d{2}\s*[AP]M)\s*[-–]\s*"
+        r"(\d{1,2}:\d{2}\s*[AP]M)",
+        re.IGNORECASE
+    )
+
+
+    # ---------------------------------------------
+    # TRUST MAIN CACHE
+    # ---------------------------------------------
+
+    with cache_lock:
+
+        for cached in cached_events:
+
+            if cached["url"] == event_url:
+
+                details["title"] = (
+                    cached["title"]
+                )
+
+                details["date"] = (
+                    cached["date"]
+                )
+
+                details["start_time"] = (
+                    cached["start_time"]
+                )
+
+                details["end_time"] = (
+                    cached["end_time"]
+                )
+
+                break
+
+
+    # ---------------------------------------------
+    # FALLBACK TITLE
+    # ---------------------------------------------
+
+    if not details["title"]:
+
+        for line in clean_lines:
+
+            if date_regex.search(
+                line
+            ):
+                continue
+
+            if time_range_regex.search(
+                line
+            ):
+                continue
+
+            if len(line) < 4:
+                continue
+
+            details["title"] = line
+
+            break
+
+
+    # ---------------------------------------------
+    # FALLBACK DATE
+    # ---------------------------------------------
+
+    if not details["date"]:
+
+        for line in clean_lines:
+
+            match = date_regex.search(
+                line
+            )
+
+            if match:
+
+                details["date"] = (
+                    match.group(0)
+                )
+
+                break
+
+
+    # ---------------------------------------------
+    # FALLBACK TIMES
+    # ---------------------------------------------
+
+    if (
+        not details["start_time"]
+        or
+        not details["end_time"]
+    ):
+
+        for line in clean_lines:
+
+            match = (
+                time_range_regex.search(
+                    line
+                )
+            )
+
+            if match:
+
+                details["start_time"] = (
+                    match.group(1)
+                )
+
+                details["end_time"] = (
+                    match.group(2)
+                )
+
+                break
+
+
+    # ---------------------------------------------
+    # DESCRIPTION
+    # ---------------------------------------------
+
+    description_lines = []
+
+    for line in clean_lines:
+
+        if line == details["title"]:
+            continue
+
+        if (
+            details["date"]
+            and
+            details["date"].lower()
+            in line.lower()
+        ):
+            continue
+
+        if date_regex.fullmatch(
+            line
+        ):
+            continue
+
+        if time_range_regex.fullmatch(
+            line
+        ):
+            continue
+
+        lower = (
+            line.lower()
+        )
+
+        if lower in {
+            "share",
+            "calendar",
+            "public calendar",
+            "open in timetree",
+            "about timetree"
+        }:
+            continue
+
+        if "cookie" in lower:
+            continue
+
+        if "privacy policy" in lower:
+            continue
+
+        if "acceptable use policy" in lower:
+            continue
+
+        if "check other events" in lower:
+            continue
+
+        if "do not sell" in lower:
+            continue
+
+        if lower.startswith(
+            "copyright © timetree"
+        ):
+            continue
+
+        if len(line) < 3:
+            continue
+
+        description_lines.append(
+            line
+        )
+
+
+    deduped = []
+
+    for line in description_lines:
+
+        if (
+            not deduped
+            or
+            deduped[-1] != line
+        ):
+            deduped.append(
+                line
+            )
+
+
+    details["description"] = (
+        "\n".join(
+            deduped[:18]
+        )
+    )
+
+
+    # ---------------------------------------------
+    # EVENT FLYER
+    # ---------------------------------------------
+
+    og_image = page.locator(
+        'meta[property="og:image"]'
+    )
+
+    if og_image.count() > 0:
+
+        src = (
+            og_image
+            .first
+            .get_attribute(
+                "content"
+            )
+        )
+
+        if src:
+
+            details["image"] = urljoin(
+                "https://timetreeapp.com",
+                src
+            )
+
+
+    # ---------------------------------------------
+    # FALLBACK IMAGE
+    # ---------------------------------------------
+
+    if not details["image"]:
+
+        images = page.locator(
+            "img"
+        )
+
+        for i in range(
+            images.count()
+        ):
+
+            image = (
+                images.nth(i)
+            )
+
+            src = (
+                image.get_attribute(
+                    "src"
+                )
+            )
+
+            if not src:
+                continue
+
+            src_lower = (
+                src.lower()
+            )
+
+            if src.startswith(
+                "data:"
+            ):
+                continue
+
+            if "logo" in src_lower:
+                continue
+
+            if "icon" in src_lower:
+                continue
+
+            if "avatar" in src_lower:
+                continue
+
+            if "cookie" in src_lower:
+                continue
+
+            details["image"] = urljoin(
+                "https://timetreeapp.com",
+                src
+            )
+
+            break
+
+
+    return details
+
+
+# =========================================================
+# SCRAPE ONE DETAIL NORMALLY
+# =========================================================
+
+def scrape_event_details(
+    event_url
+):
 
     try:
 
@@ -469,374 +840,23 @@ def scrape_event_details(
                 timeout=60000
             )
 
+            # Wait a little longer than before so
+            # the actual description is present.
             page.wait_for_timeout(
-                4000
+                6000
             )
 
-            body_text = page.locator(
-                "body"
-            ).inner_text()
-
-            lines = [
-                " ".join(
-                    line.split()
-                ).strip()
-                for line in body_text.splitlines()
-                if line.strip()
-            ]
-
-            junk_exact = {
-                "We value your privacy",
-                "Do Not Sell or Share My Personal Information",
-                "Like",
-                "Copy URL",
-                "Contact us",
-                "Check other events",
-                "Acceptable Use Policy",
-                "Public Calendar Acceptable Use Policy",
-                "Privacy Policy",
-                "Cookie Settings",
-                "Greek Matrix Central Event Calendar",
-                "About TimeTree",
-                "Copyright © TimeTree Inc. All rights reserved"
-            }
-
-            clean_lines = []
-
-            for line in lines:
-
-                if line in junk_exact:
-                    continue
-
-                lower = (
-                    line.lower()
-                )
-
-                if (
-                    "this website or its third-party tools "
-                    "process personal data"
-                    in lower
-                ):
-                    continue
-
-                if (
-                    "you can opt out of the sale of your "
-                    "personal information"
-                    in lower
-                ):
-                    continue
-
-                if lower.startswith(
-                    "copyright © timetree"
-                ):
-                    continue
-
-                if lower == "about timetree":
-                    continue
-
-                clean_lines.append(
-                    line
-                )
-
-
-            date_regex = re.compile(
-                r"(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat),\s+"
-                r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+"
-                r"\d{1,2},?\s+\d{4}",
-                re.IGNORECASE
-            )
-
-
-            time_range_regex = re.compile(
-                r"(\d{1,2}:\d{2}\s*[AP]M)\s*[-–]\s*"
-                r"(\d{1,2}:\d{2}\s*[AP]M)",
-                re.IGNORECASE
-            )
-
-
-            # ---------------------------------------------
-            # TRUST MAIN CACHE FOR TITLE/DATE/TIME
-            # ---------------------------------------------
-
-            with cache_lock:
-
-                for cached in cached_events:
-
-                    if cached["url"] == event_url:
-
-                        details["title"] = (
-                            cached["title"]
-                        )
-
-                        details["date"] = (
-                            cached["date"]
-                        )
-
-                        details["start_time"] = (
-                            cached["start_time"]
-                        )
-
-                        details["end_time"] = (
-                            cached["end_time"]
-                        )
-
-                        break
-
-
-            # ---------------------------------------------
-            # FALLBACK TITLE
-            # ---------------------------------------------
-
-            if not details["title"]:
-
-                for line in clean_lines:
-
-                    if date_regex.search(
-                        line
-                    ):
-                        continue
-
-                    if time_range_regex.search(
-                        line
-                    ):
-                        continue
-
-                    if len(line) < 4:
-                        continue
-
-                    details["title"] = line
-
-                    break
-
-
-            # ---------------------------------------------
-            # FALLBACK DATE
-            # ---------------------------------------------
-
-            if not details["date"]:
-
-                for line in clean_lines:
-
-                    match = date_regex.search(
-                        line
-                    )
-
-                    if match:
-
-                        details["date"] = (
-                            match.group(0)
-                        )
-
-                        break
-
-
-            # ---------------------------------------------
-            # FALLBACK TIMES
-            # ---------------------------------------------
-
-            if (
-                not details["start_time"]
-                or
-                not details["end_time"]
-            ):
-
-                for line in clean_lines:
-
-                    match = (
-                        time_range_regex.search(
-                            line
-                        )
-                    )
-
-                    if match:
-
-                        details["start_time"] = (
-                            match.group(1)
-                        )
-
-                        details["end_time"] = (
-                            match.group(2)
-                        )
-
-                        break
-
-
-            # ---------------------------------------------
-            # DESCRIPTION
-            # ---------------------------------------------
-
-            description_lines = []
-
-            for line in clean_lines:
-
-                if line == details["title"]:
-                    continue
-
-                if (
-                    details["date"]
-                    and
-                    details["date"].lower()
-                    in line.lower()
-                ):
-                    continue
-
-                if date_regex.fullmatch(
-                    line
-                ):
-                    continue
-
-                if time_range_regex.fullmatch(
-                    line
-                ):
-                    continue
-
-                lower = (
-                    line.lower()
-                )
-
-                if lower in {
-                    "share",
-                    "calendar",
-                    "public calendar",
-                    "open in timetree",
-                    "about timetree"
-                }:
-                    continue
-
-                if "cookie" in lower:
-                    continue
-
-                if "privacy policy" in lower:
-                    continue
-
-                if "acceptable use policy" in lower:
-                    continue
-
-                if "check other events" in lower:
-                    continue
-
-                if "do not sell" in lower:
-                    continue
-
-                if lower.startswith(
-                    "copyright © timetree"
-                ):
-                    continue
-
-                if len(line) < 3:
-                    continue
-
-                description_lines.append(
-                    line
-                )
-
-
-            deduped = []
-
-            for line in description_lines:
-
-                if (
-                    not deduped
-                    or
-                    deduped[-1] != line
-                ):
-                    deduped.append(
-                        line
-                    )
-
-
-            details["description"] = (
-                "\n".join(
-                    deduped[:18]
+            details = (
+                build_event_details_from_page(
+                    page,
+                    event_url
                 )
             )
-
-
-            # ---------------------------------------------
-            # EVENT FLYER
-            # ---------------------------------------------
-
-            og_image = page.locator(
-                'meta[property="og:image"]'
-            )
-
-            if og_image.count() > 0:
-
-                src = (
-                    og_image
-                    .first
-                    .get_attribute(
-                        "content"
-                    )
-                )
-
-                if src:
-
-                    details["image"] = urljoin(
-                        "https://timetreeapp.com",
-                        src
-                    )
-
-
-            # ---------------------------------------------
-            # FALLBACK IMAGE
-            # ---------------------------------------------
-
-            if not details["image"]:
-
-                images = page.locator(
-                    "img"
-                )
-
-                for i in range(
-                    images.count()
-                ):
-
-                    image = (
-                        images.nth(i)
-                    )
-
-                    src = (
-                        image.get_attribute(
-                            "src"
-                        )
-                    )
-
-                    if not src:
-                        continue
-
-                    src_lower = (
-                        src.lower()
-                    )
-
-                    if src.startswith(
-                        "data:"
-                    ):
-                        continue
-
-                    if "logo" in src_lower:
-                        continue
-
-                    if "icon" in src_lower:
-                        continue
-
-                    if "avatar" in src_lower:
-                        continue
-
-                    if "cookie" in src_lower:
-                        continue
-
-                    details["image"] = urljoin(
-                        "https://timetreeapp.com",
-                        src
-                    )
-
-                    break
-
 
             context.close()
             browser.close()
 
+            return details
 
     except Exception as error:
 
@@ -845,8 +865,39 @@ def scrape_event_details(
             repr(error)
         )
 
+        return {
+            "title": "",
+            "date": "",
+            "start_time": "",
+            "end_time": "",
+            "description": "",
+            "image": "",
+            "original_url": event_url
+        }
 
-    return details
+
+# =========================================================
+# CHECK IF DETAIL IS COMPLETE
+# =========================================================
+
+def detail_is_complete(
+    details
+):
+
+    if not details:
+        return False
+
+    if not details.get(
+        "title"
+    ):
+        return False
+
+    if not details.get(
+        "description"
+    ):
+        return False
+
+    return True
 
 
 # =========================================================
@@ -857,7 +908,6 @@ def get_event_details(
     event_url
 ):
 
-    # Fresh cache = immediate load
     if detail_cache_is_fresh(
         event_url
     ):
@@ -875,12 +925,9 @@ def get_event_details(
     )
 
 
-    if (
-        details.get("title")
-        or
-        details.get("description")
-        or
-        details.get("image")
+    # ONLY cache complete details.
+    if detail_is_complete(
+        details
     ):
 
         save_detail_cache(
@@ -891,8 +938,8 @@ def get_event_details(
         return details
 
 
-    # TimeTree failed?
-    # Use older cached copy if available.
+    # If new scrape was incomplete but an older
+    # cached copy exists, use the old copy.
 
     old_cached = get_cached_detail(
         event_url
@@ -906,7 +953,7 @@ def get_event_details(
 
 
 # =========================================================
-# BACKGROUND DETAIL PRE-CACHE
+# PRE-CACHE UPCOMING EVENT DETAILS
 # =========================================================
 
 def precache_event_details():
@@ -927,58 +974,128 @@ def precache_event_details():
         )
 
 
+    if not upcoming:
+
+        with cache_lock:
+            precache_in_progress = False
+
+        return
+
+
     try:
 
         print(
-            "Starting detail pre-cache for",
+            "Starting pre-cache for",
             len(upcoming),
-            "events..."
+            "events"
         )
 
 
-        for event in upcoming:
+        # One Playwright session.
+        with sync_playwright() as p:
 
-            event_url = (
-                event["url"]
+            browser = p.chromium.launch(
+                headless=True,
+                args=[
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu"
+                ]
+            )
+
+            context = browser.new_context(
+                viewport={
+                    "width": 390,
+                    "height": 844
+                },
+                locale="en-US",
+                timezone_id="America/Los_Angeles"
             )
 
 
-            # Already cached?
-            if detail_cache_is_fresh(
-                event_url
-            ):
-                continue
+            for event in upcoming:
 
-
-            print(
-                "Pre-caching:",
-                event["title"]
-            )
-
-
-            details = scrape_event_details(
-                event_url
-            )
-
-
-            if (
-                details.get("title")
-                or
-                details.get("description")
-                or
-                details.get("image")
-            ):
-
-                save_detail_cache(
-                    event_url,
-                    details
+                event_url = (
+                    event["url"]
                 )
 
 
-            # Small pause so we aren't hammering TimeTree.
-            time.sleep(
-                1.0
-            )
+                if detail_cache_is_fresh(
+                    event_url
+                ):
+                    continue
+
+
+                print(
+                    "Pre-caching:",
+                    event["title"]
+                )
+
+
+                try:
+
+                    page = context.new_page()
+
+                    page.goto(
+                        event_url,
+                        wait_until="domcontentloaded",
+                        timeout=60000
+                    )
+
+                    page.wait_for_timeout(
+                        6000
+                    )
+
+
+                    details = (
+                        build_event_details_from_page(
+                            page,
+                            event_url
+                        )
+                    )
+
+
+                    # DO NOT cache partial detail pages.
+                    if detail_is_complete(
+                        details
+                    ):
+
+                        save_detail_cache(
+                            event_url,
+                            details
+                        )
+
+                        print(
+                            "Cached:",
+                            event["title"]
+                        )
+
+                    else:
+
+                        print(
+                            "Skipped incomplete cache:",
+                            event["title"]
+                        )
+
+
+                    page.close()
+
+                except Exception as error:
+
+                    print(
+                        "PRE-CACHE EVENT ERROR:",
+                        event["title"],
+                        repr(error)
+                    )
+
+
+                time.sleep(
+                    1.0
+                )
+
+
+            context.close()
+            browser.close()
 
 
         print(
@@ -1013,7 +1130,6 @@ def start_detail_precache():
     )
 
     thread.daemon = True
-
     thread.start()
 
 
@@ -1054,9 +1170,6 @@ def home():
             )
 
 
-    # If events exist but details haven't been preloaded yet,
-    # quietly start preloading them.
-
     if events:
         start_detail_precache()
 
@@ -1079,7 +1192,6 @@ def event_detail():
         "url",
         ""
     )
-
 
     if not event_url:
 
@@ -1111,14 +1223,13 @@ def event_detail():
 
 
 # =========================================================
-# MANUAL CALENDAR REFRESH
+# MANUAL REFRESH
 # =========================================================
 
 @app.route("/refresh")
 def refresh():
 
     success = refresh_cache()
-
 
     with cache_lock:
 
@@ -1175,6 +1286,10 @@ def debug():
 
     for event in events:
 
+        cached = get_cached_detail(
+            event["url"]
+        )
+
         safe_events.append({
 
             "title":
@@ -1195,6 +1310,15 @@ def debug():
             "detail_cached":
                 detail_cache_is_fresh(
                     event["url"]
+                ),
+
+            "description_cached":
+                bool(
+                    cached
+                    and
+                    cached.get(
+                        "description"
+                    )
                 )
         })
 
