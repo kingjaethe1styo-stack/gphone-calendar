@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
+    >
+
+    <title>GPhone Calendar</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background: #05070d;
+            color: white;
+            font-family: Arial, Helvetica, sans-serif;
+        }
+
+        .phone {
+            min-height: 100vh;
+            padding: 28px 20px;
+            background:
+                radial-gradient(
+                    circle at top right,
+                    #172c66 0%,
+                    #090d19 32%,
+                    #03050a 70%
+                );
+        }
+
+        .header {
+            margin-bottom: 30px;
+        }
+
+        .title {
+            font-size: 38px;
+            font-weight: 700;
+            margin: 0;
+        }
+
+        .subtitle {
+            margin-top: 8px;
+            font-size: 18px;
+            color: #9fa7ba;
+        }
+
+        .status {
+            background: rgba(25, 35, 60, 0.9);
+            border: 1px solid #315cff;
+            border-radius: 22px;
+            padding: 22px;
+            margin-bottom: 18px;
+        }
+
+        .status h2 {
+            margin: 0 0 8px 0;
+            font-size: 24px;
+        }
+
+        .status p {
+            margin: 0;
+            color: #b9c1d5;
+            font-size: 18px;
+            line-height: 1.5;
+        }
+
+        .online {
+            color: #48e58b;
+            font-weight: 700;
+        }
+
+        .event {
+            background: rgba(16, 22, 38, 0.95);
+            border: 1px solid #263b70;
+            border-radius: 18px;
+            padding: 20px;
+            margin-top: 16px;
+        }
+
+        .event-title {
+            font-size: 24px;
+            font-weight: 700;
+        }
+
+        .event-time {
+            font-size: 17px;
+            color: #abb4ca;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="phone">
+
+    <div class="header">
+        <h1 class="title">Calendar</h1>
+
+        <div class="subtitle">
+            Greek Matrix Central Event Calendar
+        </div>
+    </div>
+
+    <div class="status">
+        <h2 class="online">GPhone Calendar Online</h2>
+
+        <p>
+            The mobile calendar service is working.
+            Live Greek Matrix events will appear here next.
+        </p>
+    </div>
+
+    <div class="event">
+        <div class="event-title">
+            Live Calendar Feed Coming Next
+        </div>
+
+        <div class="event-time">
+            TimeTree connection test
+        </div>
+    </div>
+
+</div>
+
+</body>
+</html>
