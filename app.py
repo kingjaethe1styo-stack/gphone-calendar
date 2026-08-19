@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import re
 import threading
+import time
 
 app = Flask(__name__)
 
@@ -15,12 +16,16 @@ TIMETREE_URL = (
 
 SL_TIMEZONE = ZoneInfo("America/Los_Angeles")
 
+
 # =========================================================
 # CACHE SETTINGS
 # =========================================================
 
 CALENDAR_CACHE_MINUTES = 15
 DETAIL_CACHE_MINUTES = 60
+
+# How many upcoming events we preload
+PRECACHE_EVENT_COUNT = 8
 
 cached_events = []
 last_successful_refresh = None
@@ -30,13 +35,18 @@ detail_cache = {}
 
 cache_lock = threading.Lock()
 
+# Prevent multiple precache threads
+precache_in_progress = False
+
 
 # =========================================================
 # PARSE MAIN CALENDAR EVENT TEXT
 # =========================================================
 
 def parse_event_text(raw_text):
-    text = " ".join(raw_text.split()).strip()
+    text = " ".join(
+        raw_text.split()
+    ).strip()
 
     text = re.sub(
         r"\s+Like\s*$",
@@ -54,21 +64,36 @@ def parse_event_text(raw_text):
         r"(\d{1,2}:\d{2}\s+[AP]M)$"
     )
 
-    match = pattern.match(text)
+    match = pattern.match(
+        text
+    )
 
     if not match:
         return None
 
-    title = match.group(1).strip()
-    date_text = match.group(2).strip()
-    start_time = match.group(3).strip()
-    end_time = match.group(4).strip()
+    title = (
+        match.group(1).strip()
+    )
+
+    date_text = (
+        match.group(2).strip()
+    )
+
+    start_time = (
+        match.group(3).strip()
+    )
+
+    end_time = (
+        match.group(4).strip()
+    )
 
     try:
         start_datetime = datetime.strptime(
             f"{date_text} {start_time}",
             "%a, %b %d, %Y %I:%M %p"
-        ).replace(tzinfo=SL_TIMEZONE)
+        ).replace(
+            tzinfo=SL_TIMEZONE
+        )
 
     except ValueError:
         return None
@@ -91,6 +116,7 @@ def scrape_timetree():
 
     try:
         with sync_playwright() as p:
+
             browser = p.chromium.launch(
                 headless=True,
                 args=[
@@ -117,15 +143,24 @@ def scrape_timetree():
                 timeout=60000
             )
 
-            page.wait_for_timeout(5000)
+            page.wait_for_timeout(
+                5000
+            )
 
             seen = set()
 
-            links = page.locator("a").all()
+            links = page.locator(
+                "a"
+            ).all()
 
             for link in links:
+
                 try:
-                    href = link.get_attribute("href")
+                    href = (
+                        link.get_attribute(
+                            "href"
+                        )
+                    )
 
                     if not href:
                         continue
@@ -141,25 +176,43 @@ def scrape_timetree():
                     if full_url in seen:
                         continue
 
-                    raw_text = link.inner_text().strip()
+                    raw_text = (
+                        link.inner_text()
+                        .strip()
+                    )
 
                     if not raw_text:
                         continue
 
-                    parsed = parse_event_text(raw_text)
+                    parsed = parse_event_text(
+                        raw_text
+                    )
 
                     if not parsed:
                         continue
 
-                    seen.add(full_url)
+                    seen.add(
+                        full_url
+                    )
 
                     events.append({
-                        "title": parsed["title"],
-                        "date": parsed["date"],
-                        "start_time": parsed["start_time"],
-                        "end_time": parsed["end_time"],
-                        "start_datetime": parsed["start_datetime"],
-                        "url": full_url
+                        "title":
+                            parsed["title"],
+
+                        "date":
+                            parsed["date"],
+
+                        "start_time":
+                            parsed["start_time"],
+
+                        "end_time":
+                            parsed["end_time"],
+
+                        "start_datetime":
+                            parsed["start_datetime"],
+
+                        "url":
+                            full_url
                     })
 
                 except Exception:
@@ -169,6 +222,7 @@ def scrape_timetree():
             browser.close()
 
     except Exception as error:
+
         print(
             "TIMETREE SCRAPE ERROR:",
             repr(error)
@@ -183,7 +237,8 @@ def scrape_timetree():
     events = [
         event
         for event in events
-        if event["start_datetime"].date() >= today_slt
+        if event["start_datetime"].date()
+        >= today_slt
     ]
 
     events.sort(
@@ -199,22 +254,29 @@ def scrape_timetree():
 # =========================================================
 
 def refresh_cache():
+
     global cached_events
     global last_successful_refresh
     global refresh_in_progress
 
     with cache_lock:
+
         if refresh_in_progress:
             return False
 
         refresh_in_progress = True
 
     try:
+
         new_events = scrape_timetree()
 
         if new_events:
+
             with cache_lock:
-                cached_events = new_events
+
+                cached_events = (
+                    new_events
+                )
 
                 last_successful_refresh = (
                     datetime.now(
@@ -228,7 +290,11 @@ def refresh_cache():
                 "events"
             )
 
+            # Start preloading event details
+            start_detail_precache()
+
             return True
+
 
         print(
             "Calendar scrape returned no events. "
@@ -238,17 +304,22 @@ def refresh_cache():
         return False
 
     finally:
+
         with cache_lock:
             refresh_in_progress = False
 
 
 def calendar_cache_is_stale():
+
     with cache_lock:
+
         if last_successful_refresh is None:
             return True
 
         age = (
-            datetime.now(SL_TIMEZONE)
+            datetime.now(
+                SL_TIMEZONE
+            )
             -
             last_successful_refresh
         )
@@ -259,10 +330,12 @@ def calendar_cache_is_stale():
 
 
 def start_background_refresh():
+
     if not calendar_cache_is_stale():
         return
 
     with cache_lock:
+
         if refresh_in_progress:
             return
 
@@ -271,6 +344,7 @@ def start_background_refresh():
     )
 
     thread.daemon = True
+
     thread.start()
 
 
@@ -278,8 +352,12 @@ def start_background_refresh():
 # DETAIL CACHE HELPERS
 # =========================================================
 
-def detail_cache_is_fresh(event_url):
+def detail_cache_is_fresh(
+    event_url
+):
+
     with cache_lock:
+
         cached = detail_cache.get(
             event_url
         )
@@ -295,7 +373,9 @@ def detail_cache_is_fresh(event_url):
             return False
 
         age = (
-            datetime.now(SL_TIMEZONE)
+            datetime.now(
+                SL_TIMEZONE
+            )
             -
             cached_at
         )
@@ -305,8 +385,12 @@ def detail_cache_is_fresh(event_url):
         )
 
 
-def get_cached_detail(event_url):
+def get_cached_detail(
+    event_url
+):
+
     with cache_lock:
+
         cached = detail_cache.get(
             event_url
         )
@@ -323,12 +407,17 @@ def save_detail_cache(
     event_url,
     details
 ):
+
     with cache_lock:
+
         detail_cache[event_url] = {
-            "details": details,
-            "cached_at": datetime.now(
-                SL_TIMEZONE
-            )
+            "details":
+                details,
+
+            "cached_at":
+                datetime.now(
+                    SL_TIMEZONE
+                )
         }
 
 
@@ -336,7 +425,10 @@ def save_detail_cache(
 # SCRAPE ONE EVENT DETAIL PAGE
 # =========================================================
 
-def scrape_event_details(event_url):
+def scrape_event_details(
+    event_url
+):
+
     details = {
         "title": "",
         "date": "",
@@ -348,7 +440,9 @@ def scrape_event_details(event_url):
     }
 
     try:
+
         with sync_playwright() as p:
+
             browser = p.chromium.launch(
                 headless=True,
                 args=[
@@ -375,7 +469,9 @@ def scrape_event_details(event_url):
                 timeout=60000
             )
 
-            page.wait_for_timeout(4000)
+            page.wait_for_timeout(
+                4000
+            )
 
             body_text = page.locator(
                 "body"
@@ -408,10 +504,13 @@ def scrape_event_details(event_url):
             clean_lines = []
 
             for line in lines:
+
                 if line in junk_exact:
                     continue
 
-                lower = line.lower()
+                lower = (
+                    line.lower()
+                )
 
                 if (
                     "this website or its third-party tools "
@@ -439,6 +538,7 @@ def scrape_event_details(event_url):
                     line
                 )
 
+
             date_regex = re.compile(
                 r"(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat),\s+"
                 r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+"
@@ -446,63 +546,110 @@ def scrape_event_details(event_url):
                 re.IGNORECASE
             )
 
+
             time_range_regex = re.compile(
                 r"(\d{1,2}:\d{2}\s*[AP]M)\s*[-–]\s*"
                 r"(\d{1,2}:\d{2}\s*[AP]M)",
                 re.IGNORECASE
             )
 
-            # Pull trusted title/date/time from the
-            # already-clean main calendar cache.
+
+            # ---------------------------------------------
+            # TRUST MAIN CACHE FOR TITLE/DATE/TIME
+            # ---------------------------------------------
+
             with cache_lock:
+
                 for cached in cached_events:
+
                     if cached["url"] == event_url:
-                        details["title"] = cached["title"]
-                        details["date"] = cached["date"]
-                        details["start_time"] = cached["start_time"]
-                        details["end_time"] = cached["end_time"]
+
+                        details["title"] = (
+                            cached["title"]
+                        )
+
+                        details["date"] = (
+                            cached["date"]
+                        )
+
+                        details["start_time"] = (
+                            cached["start_time"]
+                        )
+
+                        details["end_time"] = (
+                            cached["end_time"]
+                        )
+
                         break
 
-            # Fallback title
+
+            # ---------------------------------------------
+            # FALLBACK TITLE
+            # ---------------------------------------------
+
             if not details["title"]:
+
                 for line in clean_lines:
-                    if date_regex.search(line):
+
+                    if date_regex.search(
+                        line
+                    ):
                         continue
 
-                    if time_range_regex.search(line):
+                    if time_range_regex.search(
+                        line
+                    ):
                         continue
 
                     if len(line) < 4:
                         continue
 
                     details["title"] = line
+
                     break
 
-            # Fallback date
+
+            # ---------------------------------------------
+            # FALLBACK DATE
+            # ---------------------------------------------
+
             if not details["date"]:
+
                 for line in clean_lines:
+
                     match = date_regex.search(
                         line
                     )
 
                     if match:
+
                         details["date"] = (
                             match.group(0)
                         )
+
                         break
 
-            # Fallback times
+
+            # ---------------------------------------------
+            # FALLBACK TIMES
+            # ---------------------------------------------
+
             if (
                 not details["start_time"]
                 or
                 not details["end_time"]
             ):
+
                 for line in clean_lines:
-                    match = time_range_regex.search(
-                        line
+
+                    match = (
+                        time_range_regex.search(
+                            line
+                        )
                     )
 
                     if match:
+
                         details["start_time"] = (
                             match.group(1)
                         )
@@ -513,10 +660,15 @@ def scrape_event_details(event_url):
 
                         break
 
-            # Description
+
+            # ---------------------------------------------
+            # DESCRIPTION
+            # ---------------------------------------------
+
             description_lines = []
 
             for line in clean_lines:
+
                 if line == details["title"]:
                     continue
 
@@ -528,13 +680,19 @@ def scrape_event_details(event_url):
                 ):
                     continue
 
-                if date_regex.fullmatch(line):
+                if date_regex.fullmatch(
+                    line
+                ):
                     continue
 
-                if time_range_regex.fullmatch(line):
+                if time_range_regex.fullmatch(
+                    line
+                ):
                     continue
 
-                lower = line.lower()
+                lower = (
+                    line.lower()
+                )
 
                 if lower in {
                     "share",
@@ -572,9 +730,11 @@ def scrape_event_details(event_url):
                     line
                 )
 
+
             deduped = []
 
             for line in description_lines:
+
                 if (
                     not deduped
                     or
@@ -584,16 +744,24 @@ def scrape_event_details(event_url):
                         line
                     )
 
-            details["description"] = "\n".join(
-                deduped[:18]
+
+            details["description"] = (
+                "\n".join(
+                    deduped[:18]
+                )
             )
 
-            # Prefer OpenGraph flyer
+
+            # ---------------------------------------------
+            # EVENT FLYER
+            # ---------------------------------------------
+
             og_image = page.locator(
                 'meta[property="og:image"]'
             )
 
             if og_image.count() > 0:
+
                 src = (
                     og_image
                     .first
@@ -603,13 +771,19 @@ def scrape_event_details(event_url):
                 )
 
                 if src:
+
                     details["image"] = urljoin(
                         "https://timetreeapp.com",
                         src
                     )
 
-            # Fallback image
+
+            # ---------------------------------------------
+            # FALLBACK IMAGE
+            # ---------------------------------------------
+
             if not details["image"]:
+
                 images = page.locator(
                     "img"
                 )
@@ -617,16 +791,23 @@ def scrape_event_details(event_url):
                 for i in range(
                     images.count()
                 ):
-                    image = images.nth(i)
 
-                    src = image.get_attribute(
-                        "src"
+                    image = (
+                        images.nth(i)
+                    )
+
+                    src = (
+                        image.get_attribute(
+                            "src"
+                        )
                     )
 
                     if not src:
                         continue
 
-                    src_lower = src.lower()
+                    src_lower = (
+                        src.lower()
+                    )
 
                     if src.startswith(
                         "data:"
@@ -652,14 +833,18 @@ def scrape_event_details(event_url):
 
                     break
 
+
             context.close()
             browser.close()
 
+
     except Exception as error:
+
         print(
             "EVENT DETAIL ERROR:",
             repr(error)
         )
+
 
     return details
 
@@ -668,11 +853,15 @@ def scrape_event_details(event_url):
 # GET DETAIL WITH CACHE
 # =========================================================
 
-def get_event_details(event_url):
-    # Fresh cache = instant
+def get_event_details(
+    event_url
+):
+
+    # Fresh cache = immediate load
     if detail_cache_is_fresh(
         event_url
     ):
+
         cached = get_cached_detail(
             event_url
         )
@@ -680,12 +869,12 @@ def get_event_details(event_url):
         if cached:
             return cached
 
-    # Scrape TimeTree
+
     details = scrape_event_details(
         event_url
     )
 
-    # If scrape succeeds, save it
+
     if (
         details.get("title")
         or
@@ -693,6 +882,7 @@ def get_event_details(event_url):
         or
         details.get("image")
     ):
+
         save_detail_cache(
             event_url,
             details
@@ -700,8 +890,10 @@ def get_event_details(event_url):
 
         return details
 
-    # If TimeTree failed but we have older
-    # cached content, use that instead.
+
+    # TimeTree failed?
+    # Use older cached copy if available.
+
     old_cached = get_cached_detail(
         event_url
     )
@@ -709,7 +901,120 @@ def get_event_details(event_url):
     if old_cached:
         return old_cached
 
+
     return details
+
+
+# =========================================================
+# BACKGROUND DETAIL PRE-CACHE
+# =========================================================
+
+def precache_event_details():
+
+    global precache_in_progress
+
+    with cache_lock:
+
+        if precache_in_progress:
+            return
+
+        precache_in_progress = True
+
+        upcoming = list(
+            cached_events[
+                :PRECACHE_EVENT_COUNT
+            ]
+        )
+
+
+    try:
+
+        print(
+            "Starting detail pre-cache for",
+            len(upcoming),
+            "events..."
+        )
+
+
+        for event in upcoming:
+
+            event_url = (
+                event["url"]
+            )
+
+
+            # Already cached?
+            if detail_cache_is_fresh(
+                event_url
+            ):
+                continue
+
+
+            print(
+                "Pre-caching:",
+                event["title"]
+            )
+
+
+            details = scrape_event_details(
+                event_url
+            )
+
+
+            if (
+                details.get("title")
+                or
+                details.get("description")
+                or
+                details.get("image")
+            ):
+
+                save_detail_cache(
+                    event_url,
+                    details
+                )
+
+
+            # Small pause so we aren't hammering TimeTree.
+            time.sleep(
+                1.0
+            )
+
+
+        print(
+            "Detail pre-cache finished."
+        )
+
+
+    except Exception as error:
+
+        print(
+            "PRECACHE ERROR:",
+            repr(error)
+        )
+
+
+    finally:
+
+        with cache_lock:
+            precache_in_progress = False
+
+
+def start_detail_precache():
+
+    with cache_lock:
+
+        if precache_in_progress:
+            return
+
+
+    thread = threading.Thread(
+        target=precache_event_details
+    )
+
+    thread.daemon = True
+
+    thread.start()
 
 
 # =========================================================
@@ -718,7 +1023,9 @@ def get_event_details(event_url):
 
 @app.route("/")
 def home():
+
     with cache_lock:
+
         events = list(
             cached_events
         )
@@ -727,13 +1034,17 @@ def home():
             last_successful_refresh
         )
 
+
     if calendar_cache_is_stale():
         start_background_refresh()
 
+
     if not events:
+
         refresh_cache()
 
         with cache_lock:
+
             events = list(
                 cached_events
             )
@@ -741,6 +1052,14 @@ def home():
             last_refresh = (
                 last_successful_refresh
             )
+
+
+    # If events exist but details haven't been preloaded yet,
+    # quietly start preloading them.
+
+    if events:
+        start_detail_precache()
+
 
     return render_template(
         "index.html",
@@ -755,28 +1074,35 @@ def home():
 
 @app.route("/event")
 def event_detail():
+
     event_url = request.args.get(
         "url",
         ""
     )
 
+
     if not event_url:
+
         return (
             "Missing event URL",
             400
         )
 
+
     if not event_url.startswith(
         "https://timetreeapp.com/"
     ):
+
         return (
             "Invalid event URL",
             400
         )
 
+
     details = get_event_details(
         event_url
     )
+
 
     return render_template(
         "event.html",
@@ -790,9 +1116,12 @@ def event_detail():
 
 @app.route("/refresh")
 def refresh():
+
     success = refresh_cache()
 
+
     with cache_lock:
+
         count = len(
             cached_events
         )
@@ -801,14 +1130,21 @@ def refresh():
             last_successful_refresh
         )
 
+
     return jsonify({
-        "success": success,
-        "count": count,
-        "last_refresh": (
-            last_refresh.isoformat()
-            if last_refresh
-            else None
-        )
+
+        "success":
+            success,
+
+        "count":
+            count,
+
+        "last_refresh":
+            (
+                last_refresh.isoformat()
+                if last_refresh
+                else None
+            )
     })
 
 
@@ -818,7 +1154,9 @@ def refresh():
 
 @app.route("/debug")
 def debug():
+
     with cache_lock:
+
         events = list(
             cached_events
         )
@@ -827,29 +1165,72 @@ def debug():
             last_successful_refresh
         )
 
+        cached_detail_count = (
+            len(detail_cache)
+        )
+
+
     safe_events = []
 
+
     for event in events:
+
         safe_events.append({
-            "title": event["title"],
-            "date": event["date"],
-            "start_time": event["start_time"],
-            "end_time": event["end_time"],
-            "url": event["url"]
+
+            "title":
+                event["title"],
+
+            "date":
+                event["date"],
+
+            "start_time":
+                event["start_time"],
+
+            "end_time":
+                event["end_time"],
+
+            "url":
+                event["url"],
+
+            "detail_cached":
+                detail_cache_is_fresh(
+                    event["url"]
+                )
         })
 
+
     return jsonify({
-        "count": len(safe_events),
-        "calendar_cache_minutes": CALENDAR_CACHE_MINUTES,
-        "detail_cache_minutes": DETAIL_CACHE_MINUTES,
-        "detail_cache_count": len(detail_cache),
-        "refresh_in_progress": refresh_in_progress,
-        "last_refresh": (
-            last_refresh.isoformat()
-            if last_refresh
-            else None
-        ),
-        "events": safe_events
+
+        "count":
+            len(safe_events),
+
+        "calendar_cache_minutes":
+            CALENDAR_CACHE_MINUTES,
+
+        "detail_cache_minutes":
+            DETAIL_CACHE_MINUTES,
+
+        "detail_cache_count":
+            cached_detail_count,
+
+        "precache_event_count":
+            PRECACHE_EVENT_COUNT,
+
+        "precache_in_progress":
+            precache_in_progress,
+
+        "refresh_in_progress":
+            refresh_in_progress,
+
+        "last_refresh":
+            (
+                last_refresh.isoformat()
+                if last_refresh
+                else None
+            ),
+
+        "events":
+            safe_events
     })
 
 
@@ -859,6 +1240,7 @@ def debug():
 
 @app.route("/health")
 def health():
+
     return jsonify({
         "status":
             "GPhone Calendar Online"
@@ -870,6 +1252,7 @@ def health():
 # =========================================================
 
 if __name__ == "__main__":
+
     app.run(
         host="0.0.0.0",
         port=10000
