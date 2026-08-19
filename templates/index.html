@@ -1,100 +1,157 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-    <meta charset="UTF-8">
 
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
-    >
+<meta charset="UTF-8">
 
-    <title>GPhone Calendar</title>
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
+>
 
-    <style>
-        * {
-            box-sizing: border-box;
-        }
+<title>GPhone Calendar</title>
 
-        body {
-            margin: 0;
-            padding: 0;
-            background: #05070d;
-            color: white;
-            font-family: Arial, Helvetica, sans-serif;
-        }
+<style>
 
-        .phone {
-            min-height: 100vh;
-            padding: 28px 20px;
-            background:
-                radial-gradient(
-                    circle at top right,
-                    #172c66 0%,
-                    #090d19 32%,
-                    #03050a 70%
-                );
-        }
+* {
+    box-sizing: border-box;
+}
 
-        .header {
-            margin-bottom: 30px;
-        }
+html,
+body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    min-height: 100%;
+}
 
-        .title {
-            font-size: 38px;
-            font-weight: 700;
-            margin: 0;
-        }
+body {
+    background: #03050a;
+    color: white;
+    font-family: Arial, Helvetica, sans-serif;
+}
 
-        .subtitle {
-            margin-top: 8px;
-            font-size: 18px;
-            color: #9fa7ba;
-        }
+.phone {
+    width: 100%;
+    min-height: 100vh;
+    padding: 18px 14px 40px;
 
-        .status {
-            background: rgba(25, 35, 60, 0.9);
-            border: 1px solid #315cff;
-            border-radius: 22px;
-            padding: 22px;
-            margin-bottom: 18px;
-        }
+    background:
+        radial-gradient(
+            circle at top right,
+            #173172 0%,
+            #080d1b 32%,
+            #03050a 72%
+        );
+}
 
-        .status h2 {
-            margin: 0 0 8px 0;
-            font-size: 24px;
-        }
+.header {
+    margin-bottom: 18px;
+}
 
-        .status p {
-            margin: 0;
-            color: #b9c1d5;
-            font-size: 18px;
-            line-height: 1.5;
-        }
+.title {
+    margin: 0;
 
-        .online {
-            color: #48e58b;
-            font-weight: 700;
-        }
+    font-size: 30px;
+    font-weight: 800;
+}
 
-        .event {
-            background: rgba(16, 22, 38, 0.95);
-            border: 1px solid #263b70;
-            border-radius: 18px;
-            padding: 20px;
-            margin-top: 16px;
-        }
+.subtitle {
+    margin-top: 5px;
 
-        .event-title {
-            font-size: 24px;
-            font-weight: 700;
-        }
+    font-size: 13px;
 
-        .event-time {
-            font-size: 17px;
-            color: #abb4ca;
-            margin-top: 8px;
-        }
-    </style>
+    color: #adb6cc;
+}
+
+.live {
+    display: inline-block;
+
+    margin-top: 12px;
+
+    padding: 7px 11px;
+
+    border: 1px solid #2b66ff;
+    border-radius: 20px;
+
+    color: #4cff98;
+
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.section-title {
+    margin: 22px 0 10px;
+
+    font-size: 20px;
+    font-weight: 800;
+}
+
+.event {
+    display: block;
+
+    margin-bottom: 12px;
+    padding: 15px;
+
+    background: rgba(
+        14,
+        22,
+        42,
+        0.96
+    );
+
+    border: 1px solid #294c9a;
+
+    border-radius: 16px;
+
+    color: white;
+    text-decoration: none;
+}
+
+.event:active {
+    background: #173571;
+}
+
+.event-title {
+    font-size: 17px;
+    font-weight: 750;
+    line-height: 1.3;
+}
+
+.arrow {
+    margin-top: 8px;
+
+    color: #5d8fff;
+
+    font-size: 12px;
+}
+
+.empty {
+    padding: 18px;
+
+    background: #101728;
+
+    border: 1px solid #273960;
+    border-radius: 16px;
+
+    font-size: 15px;
+
+    color: #c0c7d6;
+}
+
+.footer {
+    margin-top: 24px;
+
+    font-size: 10px;
+
+    color: #68748d;
+
+    text-align: center;
+}
+
+</style>
+
 </head>
 
 <body>
@@ -102,33 +159,68 @@
 <div class="phone">
 
     <div class="header">
-        <h1 class="title">Calendar</h1>
+
+        <h1 class="title">
+            Calendar
+        </h1>
 
         <div class="subtitle">
             Greek Matrix Central Event Calendar
         </div>
-    </div>
 
-    <div class="status">
-        <h2 class="online">GPhone Calendar Online</h2>
-
-        <p>
-            The mobile calendar service is working.
-            Live Greek Matrix events will appear here next.
-        </p>
-    </div>
-
-    <div class="event">
-        <div class="event-title">
-            Live Calendar Feed Coming Next
+        <div class="live">
+            ● LIVE
         </div>
 
-        <div class="event-time">
-            TimeTree connection test
+    </div>
+
+
+    <div class="section-title">
+        Upcoming Events
+    </div>
+
+
+    {% if events %}
+
+        {% for event in events %}
+
+            <a
+                class="event"
+                href="{{ event.url }}"
+            >
+
+                <div class="event-title">
+                    {{ event.title }}
+                </div>
+
+                <div class="arrow">
+                    Tap to view event →
+                </div>
+
+            </a>
+
+        {% endfor %}
+
+    {% else %}
+
+        <div class="empty">
+
+            Calendar is connected, but no events
+            could be loaded right now.
+
         </div>
+
+    {% endif %}
+
+
+    <div class="footer">
+
+        Live from Greek Matrix Central • GPhone
+
     </div>
 
 </div>
 
 </body>
+
 </html>
