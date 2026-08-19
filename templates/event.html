@@ -33,7 +33,6 @@ body {
 }
 
 .phone {
-
     width: 100%;
     min-height: 100vh;
 
@@ -51,8 +50,12 @@ body {
         );
 }
 
-.back {
 
+/* =====================================================
+   BACK BUTTON
+===================================================== */
+
+.back {
     display: inline-block;
 
     margin-bottom: 15px;
@@ -70,6 +73,9 @@ body {
     color:
         #86a7ff;
 
+    background:
+        rgba(15, 25, 50, 0.85);
+
     font-size:
         13px;
 
@@ -80,23 +86,39 @@ body {
         none;
 }
 
+
+/* =====================================================
+   EVENT FLYER
+===================================================== */
+
 .flyer {
+    display: block;
 
     width: 100%;
 
-    max-height: 390px;
+    max-height: 300px;
 
     object-fit: contain;
 
-    border-radius: 16px;
+    border-radius:
+        16px;
 
-    background: #080d18;
+    background:
+        #080d18;
 
-    margin-bottom: 16px;
+    border:
+        1px solid #233e79;
+
+    margin-bottom:
+        16px;
 }
 
-.card {
 
+/* =====================================================
+   MAIN EVENT CARD
+===================================================== */
+
+.card {
     background:
         rgba(
             14,
@@ -118,75 +140,142 @@ body {
         14px;
 }
 
-.title {
 
+/* =====================================================
+   TITLE
+===================================================== */
+
+.title {
     margin: 0;
 
-    font-size: 24px;
+    font-size:
+        24px;
 
-    font-weight: 800;
+    font-weight:
+        800;
 
-    line-height: 1.25;
+    line-height:
+        1.25;
 }
+
+
+/* =====================================================
+   DATE
+===================================================== */
 
 .date {
+    margin-top:
+        14px;
 
-    margin-top: 14px;
+    color:
+        #d7dded;
 
-    color: #d7dded;
+    font-size:
+        14px;
 
-    font-size: 14px;
+    font-weight:
+        600;
 }
+
+
+/* =====================================================
+   TIME
+===================================================== */
 
 .time {
+    margin-top:
+        5px;
 
-    margin-top: 5px;
+    color:
+        #7da4ff;
 
-    color: #7da4ff;
+    font-size:
+        15px;
 
-    font-size: 15px;
-
-    font-weight: 700;
+    font-weight:
+        800;
 }
+
+
+/* =====================================================
+   SECTION HEADER
+===================================================== */
 
 .section {
+    margin-top:
+        20px;
 
-    margin-top: 18px;
+    padding-top:
+        15px;
 
-    color: #8cabff;
+    border-top:
+        1px solid #243760;
 
-    font-size: 12px;
+    color:
+        #8cabff;
 
-    font-weight: 800;
+    font-size:
+        12px;
 
-    text-transform: uppercase;
+    font-weight:
+        800;
+
+    text-transform:
+        uppercase;
+
+    letter-spacing:
+        0.5px;
 }
+
+
+/* =====================================================
+   DESCRIPTION
+===================================================== */
 
 .description {
+    margin-top:
+        10px;
 
-    margin-top: 9px;
+    font-size:
+        14px;
 
-    font-size: 14px;
+    line-height:
+        1.55;
 
-    line-height: 1.55;
+    white-space:
+        pre-line;
 
-    white-space: pre-line;
+    color:
+        #e1e6f3;
 
-    color: #e1e6f3;
+    overflow-wrap:
+        anywhere;
 }
 
+
+/* =====================================================
+   BUTTONS
+===================================================== */
+
 .button {
+    display:
+        block;
 
-    display: block;
+    width:
+        100%;
 
-    width: 100%;
+    padding:
+        13px;
 
-    padding: 13px;
-
-    margin-top: 12px;
+    margin-top:
+        14px;
 
     background:
-        #173571;
+        linear-gradient(
+            135deg,
+            #173571,
+            #1f438d
+        );
 
     border:
         1px solid #315cff;
@@ -194,26 +283,78 @@ body {
     border-radius:
         14px;
 
-    color: white;
+    color:
+        white;
 
-    text-align: center;
+    text-align:
+        center;
 
-    font-size: 14px;
+    font-size:
+        14px;
 
-    font-weight: 700;
+    font-weight:
+        700;
 
-    text-decoration: none;
+    text-decoration:
+        none;
 }
 
+.button:active {
+    background:
+        #2852a8;
+}
+
+
+/* =====================================================
+   NO IMAGE MESSAGE
+===================================================== */
+
+.no-image {
+    margin-bottom:
+        16px;
+
+    padding:
+        16px;
+
+    border:
+        1px solid #273960;
+
+    border-radius:
+        16px;
+
+    background:
+        #101728;
+
+    color:
+        #7e8aa5;
+
+    font-size:
+        13px;
+
+    text-align:
+        center;
+}
+
+
+/* =====================================================
+   FOOTER
+===================================================== */
+
 .footer {
+    text-align:
+        center;
 
-    text-align: center;
+    margin-top:
+        20px;
 
-    margin-top: 20px;
+    padding-bottom:
+        20px;
 
-    color: #68748d;
+    color:
+        #68748d;
 
-    font-size: 10px;
+    font-size:
+        10px;
 }
 
 </style>
@@ -226,6 +367,10 @@ body {
 <div class="phone">
 
 
+    <!-- =================================================
+         BACK TO EVENT LIST
+    ================================================== -->
+
     <a
         class="back"
         href="/"
@@ -234,38 +379,88 @@ body {
     </a>
 
 
+    <!-- =================================================
+         EVENT FLYER
+    ================================================== -->
+
     {% if event.image %}
 
         <img
             class="flyer"
             src="{{ event.image }}"
-            alt="Event Flyer"
+            alt="{{ event.title }} Flyer"
+            onerror="
+                this.style.display='none';
+                var fallback =
+                    document.getElementById(
+                        'image-fallback'
+                    );
+
+                if (fallback) {
+                    fallback.style.display='block';
+                }
+            "
         >
+
+        <div
+            id="image-fallback"
+            class="no-image"
+            style="display:none;"
+        >
+            Event flyer unavailable.
+        </div>
+
+    {% else %}
+
+        <div class="no-image">
+            Event flyer unavailable.
+        </div>
 
     {% endif %}
 
 
+    <!-- =================================================
+         EVENT INFORMATION
+    ================================================== -->
+
     <div class="card">
 
 
+        <!-- EVENT TITLE -->
+
         <h1 class="title">
-            {{ event.title }}
+
+            {% if event.title %}
+
+                {{ event.title }}
+
+            {% else %}
+
+                Event Details
+
+            {% endif %}
+
         </h1>
 
+
+        <!-- DATE -->
 
         {% if event.date %}
 
             <div class="date">
-                {{ event.date }}
+                📅 {{ event.date }}
             </div>
 
         {% endif %}
 
 
+        <!-- TIME -->
+
         {% if event.start_time %}
 
             <div class="time">
 
+                🕒
                 {{ event.start_time }}
 
                 {% if event.end_time %}
@@ -282,6 +477,8 @@ body {
         {% endif %}
 
 
+        <!-- DESCRIPTION -->
+
         {% if event.description %}
 
             <div class="section">
@@ -295,19 +492,29 @@ body {
         {% endif %}
 
 
-        <a
-            class="button"
-            href="{{ event.original_url }}"
-        >
-            Open Original TimeTree Event
-        </a>
+        <!-- ORIGINAL TIMETREE PAGE -->
+
+        {% if event.original_url %}
+
+            <a
+                class="button"
+                href="{{ event.original_url }}"
+            >
+                Open Original TimeTree Event
+            </a>
+
+        {% endif %}
 
 
     </div>
 
 
+    <!-- =================================================
+         FOOTER
+    ================================================== -->
+
     <div class="footer">
-        Greek Matrix Central • GPhone
+        Greek Matrix Central • GPhone Calendar
     </div>
 
 
